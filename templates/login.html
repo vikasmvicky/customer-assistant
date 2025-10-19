@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Login - CustomAssistant</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.1.3/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.5.0/css/all.css">
+    <!-- We will use the same stylesheet -->
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        body {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+        }
+        .login-container {
+            width: 100%;
+            max-width: 400px;
+            padding: 40px;
+            background-color: var(--card-bg);
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            border: 1px solid var(--border-color);
+        }
+        .login-container h3 {
+            text-align: center;
+            margin-bottom: 30px;
+            font-weight: 600;
+        }
+        .form-control {
+            background-color: var(--msg-bot-bg);
+            border: 1px solid var(--border-color);
+            color: var(--text-color);
+        }
+        .form-control:focus {
+            border-color: var(--msg-user-bg);
+            box-shadow: none;
+        }
+        .btn-login {
+            width: 100%;
+            padding: 12px;
+            background-color: var(--msg-user-bg);
+            border: none;
+            border-radius: 25px;
+            font-weight: 500;
+            transition: background-color 0.3s;
+        }
+        .btn-login:hover {
+            background-color: #0a58ca;
+        }
+        .alert {
+            background-color: #4a2c2a;
+            border-color: #8b4513;
+            color: #f8d7da;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <h3><i class="fas fa-lock"></i> Login</h3>
+        
+        <!-- Flash messages will show errors here -->
+        {% with messages = get_flashed_messages() %}
+          {% if messages %}
+            {% for message in messages %}
+              <div class="alert alert-danger" role="alert">{{ message }}</div>
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+
+        <form method="post" action="{{ url_for('login') }}">
+            <div class="form-group">
+                <label for="username">Username</label>
+                <input type="text" class="form-control" id="username" name="username" required>
+            </div>
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input type="password" class="form-control" id="password" name="password" required>
+            </div>
+            <button type="submit" class="btn btn-primary btn-login">Login</button>
+        </form>
+    </div>
+</body>
+</html>
