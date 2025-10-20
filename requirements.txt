@@ -1,6 +1,10 @@
 flask
 langchain
-openai
-pinecone          # <--- CHANGED THIS LINE
+langchain-openai
+sentence-transformers
+pinecone
+pdfplumber
 python-dotenv
-tiktoken
+# --- NEW LIBRARIES FOR OCR ---
+pytesseract
+Pillow

@@ -1,5 +1,5 @@
 # app.py - Final version with forced error reporting
-
+import warnings
 from flask import Flask, render_template, request, jsonify, session, redirect, url_for, flash
 from dotenv import load_dotenv
 import os
@@ -9,6 +9,11 @@ from langchain_pinecone import PineconeVectorStore
 from langchain.chains import RetrievalQA
 from langchain.prompts import PromptTemplate
 from sentence_transformers import SentenceTransformer
+
+# --- Suppress Warnings ---
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+warnings.filterwarnings("ignore", category=UserWarning)
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2' # Suppress TensorFlow warnings
 
 load_dotenv()
 
@@ -35,30 +40,39 @@ class LocalEmbeddings:
 embeddings = LocalEmbeddings('sentence-transformers/all-MiniLM-L6-v2')
 print("Model loaded.")
 
-# Connect to Pinecone using LangChain's wrapper
 docsearch = PineconeVectorStore.from_existing_index(
     index_name=INDEX_NAME,
     embedding=embeddings
 )
 
-# Initialize the LLM to use OpenRouter
+# --- UPDATED MODEL SELECTION ---
+# Using the recommended NVIDIA model
+MODEL_NAME = "nvidia/nemotron-nano-9b-v2"
+
+# Initialize the LLM to use OpenRouter with the selected model
 llm = ChatOpenAI(
-    model="meta-llama/llama-3.1-8b-instruct:free",
+    model=MODEL_NAME,
     openai_api_key=OPENROUTER_API_KEY,
     openai_api_base="https://openrouter.ai/api/v1",
     temperature=0.1
 )
 
-# Create the retriever
 retriever = docsearch.as_retriever(search_kwargs={"k": 3})
+
+# In app.py, find this section and replace the prompt_template
 
 # Define the prompt template
 prompt_template = """
-Use the following pieces of context to answer the question at the end. If you don't know the answer, just say that you don't know, don't try to make up an answer.
+You are a helpful customer support assistant. Use the following pieces of context to answer the question at the end.
 
 Context: {context}
 
 Question: {question}
+
+Instructions:
+1. If the context provides a clear answer to the question, provide that "Helpful Answer".
+2. If the user's question is very broad or a single keyword (e.g., "invoices", "shipping", "returns"), do not just summarize the context. Instead, first acknowledge the topic and then ask a clarifying question or provide a list of more specific questions you can answer based on the context.
+3. If the context does not contain the answer, just say that you don't have information on that topic. Do not try to make up an answer.
 
 Helpful Answer:"""
 
@@ -66,7 +80,6 @@ PROMPT = PromptTemplate(
     template=prompt_template, input_variables=["context", "question"]
 )
 
-# Create the RetrievalQA chain
 chain = RetrievalQA.from_chain_type(
     llm=llm,
     chain_type="stuff",
@@ -115,23 +128,34 @@ def logout():
     flash("You have been logged out.")
     return redirect(url_for('login'))
 
-@app.route("/get", methods=["POST"])
+@app.route("/ask", methods=["POST"])
 @login_required
 def get_bot_response():
     print("--- A new message was received ---")
     
-    msg = request.form["msg"]
+    if request.is_json:
+        data = request.get_json()
+        msg = data.get("question", "")
+    else:
+        msg = request.form.get("msg", "")
+    
     print(f"User Input: {msg}")
     
-    # Use the QA chain to get the answer
+    if not msg:
+        return jsonify({"response": "Please provide a question."})
+    
     print("Invoking the chain...")
-    response = chain.invoke(msg)
-    print("Chain executed successfully.")
-    
-    answer = response["result"]
-    print("Final Answer: ", answer)
-    
-    return jsonify({"response": answer})
+    try:
+        response = chain.invoke(msg)
+        print("Chain executed successfully.")
+        
+        answer = response["result"]
+        print("Final Answer: ", answer)
+        
+        return jsonify({"response": answer})
+    except Exception as e:
+        print(f"Error: {str(e)}")
+        return jsonify({"response": "An error occurred while processing your request."})
 
 if __name__ == '__main__':
     app.run(debug=True)

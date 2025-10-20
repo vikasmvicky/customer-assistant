@@ -1,105 +1,239 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Chatbot</title>
-
-    <!-- Bootstrap & Fonts -->
-    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.1.3/css/bootstrap.min.css">
-    <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.5.0/css/all.css">
-
-    <!-- jQuery -->
-    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
-
-    <!-- Local CSS file -->
-    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='style.css') }}">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }} - Customer Support Assistant</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
-
 <body>
-    <div class="container-fluid h-100">
-        <div class="row justify-content-center h-100">		
-            <div class="col-md-8 col-xl-6 chat">
-                <div class="card">
-                    <div class="card-header msg_head">
-                        <div class="d-flex bd-highlight">
-                            <div class="img_cont">
-                                <!-- Make sure this image is in your 'static' folder -->
-                                <img src="{{ url_for('static', filename='download.jpeg') }}" class="rounded-circle user_img">
-                                <span class="online_icon"></span>
-                            </div>
-                            <div class="user_info">
-                                <span>CustomAssistant</span>
-                                <a href="{{ url_for('logout') }}" class="ml-auto btn btn-sm btn-outline-light">Logout</a>
-                                <p>Ask me anything!</p>
-                            </div>
-                        </div>
-                    </div>
-                    <div id="messageFormeight" class="card-body msg_card_body">
-                    </div>
-                    <div class="card-footer">
-                        <form id="messageArea" class="input-group">
-                            <input type="text" id="text" name="msg" placeholder="Type your message..." autocomplete="off" class="form-control type_msg" required/>
-                            <div class="input-group-append">
-                                <button type="submit" id="send" class="input-group-text send_btn"><i class="fas fa-location-arrow"></i></button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
+    <div class="container">
+        <div class="header">
+            <h1>Customer Support Assistant</h1>
+            <a href="{{ url_for('logout') }}" class="logout-btn">Logout</a>
+        </div>
+        
+        <div id="chat-box">
+            <div class="welcome-message">
+                Hello! I'm your customer support assistant. You can type or speak your questions. How can I help you today?
+            </div>
+            <!-- Suggested questions will appear here -->
+            <div id="suggested-questions" class="suggested-questions">
+                <div class="suggestion-chip" onclick="askQuestion('Where can I find my invoice?')">Where can I find my invoice?</div>
+                <div class="suggestion-chip" onclick="askQuestion('Why is my order delayed?')">Why is my order delayed?</div>
+                <div class="suggestion-chip" onclick="askQuestion('How do I return an item?')">How do I return an item?</div>
             </div>
         </div>
+        
+        <div class="input-area">
+            <button id="voice-input-btn" class="voice-btn" title="Click to speak">
+                <i class="fas fa-microphone"></i>
+            </button>
+            <input type="text" id="user-input" placeholder="Type your question here...">
+            <button id="send-btn">Send</button>
+            <button id="voice-output-btn" class="voice-btn" title="Toggle voice output">
+                <i class="fas fa-volume-up"></i>
+            </button>
+        </div>
     </div>
-    
+
     <script>
-        $(document).ready(function() {
-            $("#messageArea").on("submit", function(event) {
-                const date = new Date();
-                const hour = date.getHours();
-                const minute = date.getMinutes();
-                const str_time = hour + ":" + minute;
-                var rawText = $("#text").val();
-
-                // Display the user's message immediately
-                var userHtml = `
-                <div class="d-flex justify-content-end mb-4">
-                    <div class="msg_cotainer_send">
-                        ${rawText}
-                        <span class="msg_time_send">${str_time}</span>
-                    </div>
-                    <div class="img_cont_msg">
-                        <img src="{{ url_for('static', filename='download.jpeg') }}" class="rounded-circle user_img_msg">
-                    </div>
-                </div>`;
-
-                $("#text").val("");
-                $("#messageFormeight").append(userHtml);
-
-                // --- THIS IS THE NEW PART ---
-                // Send the user's message to the Flask backend using AJAX
-                $.ajax({
-                    data: {
-                        msg: rawText,
-                    },
-                    type: "POST",
-                    url: "/get",
-                }).done(function(data) {
-                    // Get the bot's response from the server
-                    var botMessage = data.response;
-                    var botHtml = `
-                    <div class="d-flex justify-content-start mb-4">
-                        <div class="img_cont_msg">
-                            <img src="{{ url_for('static', filename='download.jpeg') }}" class="rounded-circle user_img_msg">
-                        </div>
-                        <div class="msg_cotainer">
-                            ${botMessage}
-                            <span class="msg_time">${str_time}</span>
-                        </div>
-                    </div>`;
-                    $("#messageFormeight").append(botHtml);
-                });
-
-                event.preventDefault();
-            });
+        // Check if browser supports speech recognition
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        const recognition = new SpeechRecognition();
+        
+        // Check if browser supports speech synthesis
+        const speechSynthesis = window.speechSynthesis;
+        
+        // Voice state
+        let isListening = false;
+        let voiceOutputEnabled = true;
+        
+        // Configure speech recognition
+        recognition.continuous = false;
+        recognition.interimResults = false;
+        recognition.lang = 'en-US';
+        
+        // Event listeners for buttons
+        document.getElementById('send-btn').addEventListener('click', sendMessage);
+        document.getElementById('user-input').addEventListener('keypress', function(event) {
+            if (event.key === 'Enter') {
+                sendMessage();
+            }
         });
-    </script>
+        
+        // Voice input button
+        document.getElementById('voice-input-btn').addEventListener('click', toggleVoiceInput);
+        
+        // Voice output button
+        document.getElementById('voice-output-btn').addEventListener('click', toggleVoiceOutput);
+        
+        // Speech recognition events
+        recognition.onstart = function() {
+            isListening = true;
+            updateVoiceInputButton();
+            document.getElementById('user-input').placeholder = "Listening...";
+        };
+        
+        recognition.onresult = function(event) {
+            const transcript = event.results[0][0].transcript;
+            document.getElementById('user-input').value = transcript;
+            sendMessage();
+        };
+        
+        recognition.onerror = function(event) {
+            console.error('Speech recognition error:', event.error);
+            isListening = false;
+            updateVoiceInputButton();
+            document.getElementById('user-input').placeholder = "Type your question here...";
+            
+            // Show error message
+            addBotMessage("Sorry, I couldn't understand what you said. Please try again or type your question.");
+        };
+        
+        recognition.onend = function() {
+            isListening = false;
+            updateVoiceInputButton();
+            document.getElementById('user-input').placeholder = "Type your question here...";
+        };
+        
+        function toggleVoiceInput() {
+            if (isListening) {
+                recognition.stop();
+            } else {
+                recognition.start();
+            }
+        }
+        
+        function toggleVoiceOutput() {
+            voiceOutputEnabled = !voiceOutputEnabled;
+            updateVoiceOutputButton();
+        }
+        
+        function updateVoiceInputButton() {
+            const btn = document.getElementById('voice-input-btn');
+            if (isListening) {
+                btn.classList.add('listening');
+                btn.innerHTML = '<i class="fas fa-stop"></i>';
+            } else {
+                btn.classList.remove('listening');
+                btn.innerHTML = '<i class="fas fa-microphone"></i>';
+            }
+        }
+        
+        function updateVoiceOutputButton() {
+            const btn = document.getElementById('voice-output-btn');
+            if (voiceOutputEnabled) {
+                btn.classList.add('active');
+            } else {
+                btn.classList.remove('active');
+            }
+        }
+        
+        function speakText(text) {
+            if (!voiceOutputEnabled || !speechSynthesis) {
+                return;
+            }
+            
+            // Cancel any ongoing speech
+            speechSynthesis.cancel();
+            
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.rate = 0.9;
+            utterance.pitch = 1;
+            utterance.volume = 0.8;
+            
+            speechSynthesis.speak(utterance);
+        }
 
+        function askQuestion(question) {
+            document.getElementById('user-input').value = question;
+            sendMessage();
+        }
+
+        function addBotMessage(text) {
+            const chatBox = document.getElementById('chat-box');
+            const botMessageDiv = document.createElement('div');
+            botMessageDiv.className = 'message bot-message';
+            botMessageDiv.textContent = text;
+            chatBox.appendChild(botMessageDiv);
+            chatBox.scrollTop = chatBox.scrollHeight;
+            return botMessageDiv;
+        }
+
+        function sendMessage() {
+            const userInput = document.getElementById('user-input');
+            const message = userInput.value.trim();
+            if (message === '') return;
+
+            // Hide suggested questions after first interaction
+            const suggestedQuestions = document.getElementById('suggested-questions');
+            if (suggestedQuestions) {
+                suggestedQuestions.style.display = 'none';
+            }
+
+            const chatBox = document.getElementById('chat-box');
+            
+            // Add user message
+            const userMessageDiv = document.createElement('div');
+            userMessageDiv.className = 'message user-message';
+            userMessageDiv.textContent = message;
+            chatBox.appendChild(userMessageDiv);
+            
+            // Clear input
+            userInput.value = '';
+            
+            // Scroll to bottom
+            chatBox.scrollTop = chatBox.scrollHeight;
+            
+            // Show typing indicator
+            const typingIndicator = document.createElement('div');
+            typingIndicator.className = 'typing-indicator';
+            typingIndicator.innerHTML = '<span></span><span></span><span></span>';
+            chatBox.appendChild(typingIndicator);
+            chatBox.scrollTop = chatBox.scrollHeight;
+
+            // Send request to server
+            fetch('/ask', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ question: message })
+            })
+            .then(response => response.json())
+            .then(data => {
+                // Remove typing indicator
+                chatBox.removeChild(typingIndicator);
+                
+                // Add bot response
+                const responseText = data.response || 'Sorry, I could not understand that.';
+                const botMessageDiv = addBotMessage(responseText);
+                
+                // Scroll to bottom
+                chatBox.scrollTop = chatBox.scrollHeight;
+                
+                // Speak the response
+                speakText(responseText);
+            })
+            .catch(error => {
+                // Remove typing indicator
+                chatBox.removeChild(typingIndicator);
+                
+                console.error('Error:', error);
+                const responseText = 'An error occurred. Please try again.';
+                addBotMessage(responseText);
+                
+                // Scroll to bottom
+                chatBox.scrollTop = chatBox.scrollHeight;
+                
+                // Speak the error message
+                speakText(responseText);
+            });
+        }
+        
+        // Initialize voice output button state
+        updateVoiceOutputButton();
+    </script>
 </body>
 </html>
