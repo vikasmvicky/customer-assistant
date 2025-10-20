@@ -1,4 +1,4 @@
-# app.py - The final, LangChain-compatible version
+# app.py - Final version with forced error reporting
 
 from flask import Flask, render_template, request, jsonify, session, redirect, url_for, flash
 from dotenv import load_dotenv
@@ -6,9 +6,8 @@ import os
 from functools import wraps
 from langchain_openai import ChatOpenAI
 from langchain_pinecone import PineconeVectorStore
-from langchain.chains import create_retrieval_chain
-from langchain.chains.combine_documents import create_stuff_documents_chain
-from langchain_core.prompts import ChatPromptTemplate
+from langchain.chains import RetrievalQA
+from langchain.prompts import PromptTemplate
 from sentence_transformers import SentenceTransformer
 
 load_dotenv()
@@ -46,31 +45,37 @@ docsearch = PineconeVectorStore.from_existing_index(
 llm = ChatOpenAI(
     model="meta-llama/llama-3.1-8b-instruct:free",
     openai_api_key=OPENROUTER_API_KEY,
-    openai_api_base="https://openrouter.ai/api/v1"
+    openai_api_base="https://openrouter.ai/api/v1",
+    temperature=0.1
 )
 
 # Create the retriever
-retriever = docsearch.as_retriever(search_type="similarity", search_kwargs={"k":3})
+retriever = docsearch.as_retriever(search_kwargs={"k": 3})
 
-# Define the system prompt
-system_prompt = """
-You are a helpful customer assistant. Use the following context to answer the user's question.
-If the answer is not found in the context, just say that you don't know, don't try to make up an answer.
-Keep the answer concise and to the point.
+# Define the prompt template
+prompt_template = """
+Use the following pieces of context to answer the question at the end. If you don't know the answer, just say that you don't know, don't try to make up an answer.
 
-CONTEXT:
-{context}
-"""
+Context: {context}
 
-# Create the LangChain chains
-prompt = ChatPromptTemplate.from_messages([
-    ("system", system_prompt),
-    ("human", "{input}"),
-])
-question_answer_chain = create_stuff_documents_chain(llm, prompt)
-rag_chain = create_retrieval_chain(retriever, question_answer_chain)
+Question: {question}
 
-# --- Login and Routes (kept the same) ---
+Helpful Answer:"""
+
+PROMPT = PromptTemplate(
+    template=prompt_template, input_variables=["context", "question"]
+)
+
+# Create the RetrievalQA chain
+chain = RetrievalQA.from_chain_type(
+    llm=llm,
+    chain_type="stuff",
+    retriever=retriever,
+    return_source_documents=True,
+    chain_type_kwargs={"prompt": PROMPT}
+)
+
+# --- Login and Routes ---
 def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
@@ -113,14 +118,20 @@ def logout():
 @app.route("/get", methods=["POST"])
 @login_required
 def get_bot_response():
+    print("--- A new message was received ---")
+    
     msg = request.form["msg"]
     print(f"User Input: {msg}")
     
-    # Use the RAG chain to get the answer
-    response = rag_chain.invoke({"input": msg})
-    print("Response : ", response["answer"])
+    # Use the QA chain to get the answer
+    print("Invoking the chain...")
+    response = chain.invoke(msg)
+    print("Chain executed successfully.")
     
-    return jsonify({"response": response["answer"]})
+    answer = response["result"]
+    print("Final Answer: ", answer)
+    
+    return jsonify({"response": answer})
 
 if __name__ == '__main__':
     app.run(debug=True)
