@@ -16,6 +16,7 @@
         </div>
         
         <div id="chat-box">
+            <!-- Chat history will be loaded here -->
             <div class="welcome-message">
                 Hello! I'm your customer support assistant. You can type or speak your questions. How can I help you today?
             </div>
@@ -88,8 +89,6 @@
             isListening = false;
             updateVoiceInputButton();
             document.getElementById('user-input').placeholder = "Type your question here...";
-            
-            // Show error message
             addBotMessage("Sorry, I couldn't understand what you said. Please try again or type your question.");
         };
         
@@ -133,18 +132,10 @@
         }
         
         function speakText(text) {
-            if (!voiceOutputEnabled || !speechSynthesis) {
-                return;
-            }
-            
-            // Cancel any ongoing speech
+            if (!voiceOutputEnabled || !speechSynthesis) return;
             speechSynthesis.cancel();
-            
             const utterance = new SpeechSynthesisUtterance(text);
-            utterance.rate = 0.9;
-            utterance.pitch = 1;
-            utterance.volume = 0.8;
-            
+            utterance.rate = 0.9; utterance.pitch = 1; utterance.volume = 0.8;
             speechSynthesis.speak(utterance);
         }
 
@@ -155,12 +146,61 @@
 
         function addBotMessage(text) {
             const chatBox = document.getElementById('chat-box');
+            const messageContainer = document.createElement('div');
+            messageContainer.className = 'message-container';
+            
             const botMessageDiv = document.createElement('div');
             botMessageDiv.className = 'message bot-message';
             botMessageDiv.textContent = text;
-            chatBox.appendChild(botMessageDiv);
+            messageContainer.appendChild(botMessageDiv);
+
+            // Add feedback buttons
+            const feedbackDiv = document.createElement('div');
+            feedbackDiv.className = 'message-feedback';
+            feedbackDiv.innerHTML = `
+                <button class="feedback-btn" onclick="sendFeedback('${text.replace(/'/g, "\\'")}', 'up')" title="Helpful">
+                    <i class="fas fa-thumbs-up"></i>
+                </button>
+                <button class="feedback-btn" onclick="sendFeedback('${text.replace(/'/g, "\\'")}', 'down')" title="Not Helpful">
+                    <i class="fas fa-thumbs-down"></i>
+                </button>
+            `;
+            messageContainer.appendChild(feedbackDiv);
+
+            chatBox.appendChild(messageContainer);
             chatBox.scrollTop = chatBox.scrollHeight;
-            return botMessageDiv;
+            saveChatHistory();
+        }
+
+        function sendFeedback(message, feedbackType) {
+            fetch('/log_feedback', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ message: message, feedback: feedbackType })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    console.log('Feedback logged successfully');
+                    // Optionally, disable the feedback buttons after submission
+                    event.target.disabled = true;
+                } else {
+                    console.error('Error logging feedback:', data.message);
+                }
+            })
+            .catch(error => console.error('Error:', error));
+        }
+
+        function saveChatHistory() {
+            const chatBox = document.getElementById('chat-box');
+            localStorage.setItem('chatHistory', chatBox.innerHTML);
+        }
+
+        function loadChatHistory() {
+            const chatHistory = localStorage.getItem('chatHistory');
+            if (chatHistory) {
+                document.getElementById('chat-box').innerHTML = chatHistory;
+            }
         }
 
         function sendMessage() {
@@ -203,37 +243,25 @@
             })
             .then(response => response.json())
             .then(data => {
-                // Remove typing indicator
                 chatBox.removeChild(typingIndicator);
-                
-                // Add bot response
                 const responseText = data.response || 'Sorry, I could not understand that.';
-                const botMessageDiv = addBotMessage(responseText);
-                
-                // Scroll to bottom
-                chatBox.scrollTop = chatBox.scrollHeight;
-                
-                // Speak the response
+                addBotMessage(responseText); // This function now also adds feedback buttons
                 speakText(responseText);
             })
             .catch(error => {
-                // Remove typing indicator
                 chatBox.removeChild(typingIndicator);
-                
                 console.error('Error:', error);
                 const responseText = 'An error occurred. Please try again.';
                 addBotMessage(responseText);
-                
-                // Scroll to bottom
-                chatBox.scrollTop = chatBox.scrollHeight;
-                
-                // Speak the error message
                 speakText(responseText);
             });
         }
         
-        // Initialize voice output button state
-        updateVoiceOutputButton();
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            loadChatHistory();
+            updateVoiceOutputButton();
+        });
     </script>
 </body>
 </html>

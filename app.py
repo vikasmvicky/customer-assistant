@@ -9,6 +9,7 @@ from langchain_pinecone import PineconeVectorStore
 from langchain.chains import RetrievalQA
 from langchain.prompts import PromptTemplate
 from sentence_transformers import SentenceTransformer
+import datetime # Import for logging timestamps
 
 # --- Suppress Warnings ---
 warnings.filterwarnings("ignore", category=DeprecationWarning)
@@ -46,7 +47,6 @@ docsearch = PineconeVectorStore.from_existing_index(
 )
 
 # --- UPDATED MODEL SELECTION ---
-# Using the recommended NVIDIA model
 MODEL_NAME = "nvidia/nemotron-nano-9b-v2"
 
 # Initialize the LLM to use OpenRouter with the selected model
@@ -59,9 +59,6 @@ llm = ChatOpenAI(
 
 retriever = docsearch.as_retriever(search_kwargs={"k": 3})
 
-# In app.py, find this section and replace the prompt_template
-
-# Define the prompt template
 prompt_template = """
 You are a helpful customer support assistant. Use the following pieces of context to answer the question at the end.
 
@@ -156,6 +153,29 @@ def get_bot_response():
     except Exception as e:
         print(f"Error: {str(e)}")
         return jsonify({"response": "An error occurred while processing your request."})
+
+# --- NEW ROUTE FOR LOGGING FEEDBACK ---
+@app.route("/log_feedback", methods=["POST"])
+@login_required
+def log_feedback():
+    try:
+        data = request.get_json()
+        message = data.get("message", "")
+        feedback = data.get("feedback", "")
+        
+        if not message or not feedback:
+            return jsonify({"status": "error", "message": "Missing data"}), 400
+
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        log_entry = f"[{timestamp}] Feedback: {feedback} | Message: {message}\n"
+        
+        with open("feedback.log", "a") as f:
+            f.write(log_entry)
+            
+        return jsonify({"status": "success", "message": "Feedback logged"})
+    except Exception as e:
+        print(f"Error logging feedback: {str(e)}")
+        return jsonify({"status": "error", "message": "Failed to log feedback"}), 500
 
 if __name__ == '__main__':
     app.run(debug=True)
